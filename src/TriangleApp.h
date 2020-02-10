@@ -8,6 +8,7 @@
 
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
+#include <optional>
 #include <vector>
 
 #include "types.h"
@@ -22,10 +23,13 @@ public:
 
 private:
     GLFWwindow* window;
+    VkSurfaceKHR surface;
+
     VkInstance instance;
     VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;
     VkDevice logicalDevice;
     VkQueue graphicsQueue;
+    VkQueue presentQueue;
     VkDebugUtilsMessengerEXT debugMessenger;
 
     const std::vector<type::cstr> validationLayers =
@@ -57,8 +61,11 @@ private:
 
     struct QueueFamilyIndices
     {
+        // Drawing command support
         std::optional<type::uint32> graphicsFamily;
-        inline auto isComplete() -> bool { return graphicsFamily.has_value(); }
+        // Presentation command support (displaying to a surface)
+        std::optional<type::uint32> presentFamily;
+        inline auto isComplete() -> bool { return graphicsFamily.has_value() && presentFamily.has_value(); }
     };
     // Check if the device supports the type of commands we want to send
     auto findQueueFamilies(VkPhysicalDevice device) -> QueueFamilyIndices;
@@ -70,6 +77,7 @@ private:
     auto createLogicalDevice() -> void;
 
     auto createInstance() -> void;
+    auto createSurface() -> void;
     auto initVulkan() -> void;
 
     auto mainLoop() -> void;

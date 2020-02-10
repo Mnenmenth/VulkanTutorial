@@ -7,6 +7,7 @@
 #include <iostream>
 #include <cstring>
 #include <map>
+#include <set>
 #include "TriangleApp.h"
 
 auto CreateDebugUtilsMessengerEXT(
@@ -153,6 +154,14 @@ auto TriangleApp::findQueueFamilies(VkPhysicalDevice device) -> TriangleApp::Que
             indices.graphicsFamily = i;
         }
 
+        // Does the device support presentation to a surface
+        VkBool32 presentSupport = false;
+        vkGetPhysicalDeviceSurfaceSupportKHR(device, i, surface, &presentSupport);
+        if(presentSupport)
+        {
+            indices.presentFamily = i;
+        }
+
         if(indices.isComplete())
         {
             break;
@@ -223,20 +232,33 @@ auto TriangleApp::createLogicalDevice() -> void
 {
     QueueFamilyIndices indices = findQueueFamilies(physicalDevice);
 
-    VkDeviceQueueCreateInfo queueCreateInfo = {};
-    queueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-    queueCreateInfo.queueFamilyIndex = indices.graphicsFamily.value();
-    queueCreateInfo.queueCount = 1;
+    // From here to end of for loop is for creating create info struct
+    // for each type of queue family
+    std::vector<VkDeviceQueueCreateInfo> queueCreateInfos;
+    std::set<type::uint32> uniqueQueueFamililies =
+            {
+                indices.graphicsFamily.value(),
+                indices.presentFamily.value()
+            };
+
     float queuePriority = 1.0f;
-    queueCreateInfo.pQueuePriorities = &queuePriority;
+    for(type::uint32 queueFamily : uniqueQueueFamililies)
+    {
+        VkDeviceQueueCreateInfo queueCreateInfo = {};
+        queueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+        queueCreateInfo.queueFamilyIndex = queueFamily;
+        queueCreateInfo.queueCount = 1;
+        queueCreateInfo.pQueuePriorities = &queuePriority;
+        queueCreateInfos.push_back(queueCreateInfo);
+    }
 
     /// This will be used later on
     VkPhysicalDeviceFeatures deviceFeatures = {};
 
     VkDeviceCreateInfo createInfo = {};
     createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
-    createInfo.pQueueCreateInfos = &queueCreateInfo;
-    createInfo.queueCreateInfoCount = 1;
+    createInfo.queueCreateInfoCount = static_cast<type::uint32>(queueCreateInfos.size());
+    createInfo.pQueueCreateInfos = queueCreateInfos.data();
     createInfo.pEnabledFeatures = &deviceFeatures;
     createInfo.enabledExtensionCount = 0;
 
@@ -257,6 +279,8 @@ auto TriangleApp::createLogicalDevice() -> void
 
     // Get handle for the graphics queue
     vkGetDeviceQueue(logicalDevice, indices.graphicsFamily.value(), 0, &graphicsQueue);
+    // Get handle for the presentation queue
+    vkGetDeviceQueue(logicalDevice, indices.presentFamily.value(), 0, &presentQueue);
 }
 
 auto TriangleApp::createInstance() -> void
@@ -309,10 +333,19 @@ auto TriangleApp::createInstance() -> void
     }
 }
 
+auto TriangleApp::createSurface() -> void
+{
+    if(glfwCreateWindowSurface(instance, window, nullptr, &surface) != VK_SUCCESS)
+    {
+        throw std::runtime_error("Window surface creation failed");
+    }
+}
+
 auto TriangleApp::initVulkan() -> void
 {
     createInstance();
     setupDebugMessenger();
+    createSurface();
     pickPhysicalDevice();
     createLogicalDevice();
 }
@@ -334,6 +367,7 @@ auto TriangleApp::cleanup() -> void
         DestroyDebugUtilsMessengerEXT(instance, debugMessenger, nullptr);
     }
 
+    vkDestroySurfaceKHR(instance, surface, nullptr);
     vkDestroyInstance(instance, nullptr);
 
     glfwDestroyWindow(window);
