@@ -12,6 +12,14 @@
 #include <vector>
 
 #include "types.h"
+#include <optional>
+
+/**
+ *
+ * Tutorial last left of at:
+ * https://vulkan-tutorial.com/Drawing_a_triangle/Presentation/Swap_chain#page_Choosing-the-right-settings-for-the-swap-chain
+ *
+ */
 
 class TriangleApp
 {
@@ -32,9 +40,15 @@ private:
     VkQueue presentQueue;
     VkDebugUtilsMessengerEXT debugMessenger;
 
+    // Required validation layers
     const std::vector<type::cstr> validationLayers =
             {
                 "VK_LAYER_KHRONOS_validation"
+            };
+    // Required device extensions
+    const std::vector<type::cstr> deviceExtensions =
+            {
+                VK_KHR_SWAPCHAIN_EXTENSION_NAME
             };
 #ifdef NDEBUG
     static constexpr bool enableValidationLayers = false;
@@ -59,6 +73,7 @@ private:
     // Get vulkan extensions required to run
     auto getRequiredExtensions() -> std::vector<type::cstr>;
 
+    // Hold the indices for the queue family from the list of queue families found
     struct QueueFamilyIndices
     {
         // Drawing command support
@@ -69,6 +84,17 @@ private:
     };
     // Check if the device supports the type of commands we want to send
     auto findQueueFamilies(VkPhysicalDevice device) -> QueueFamilyIndices;
+    // Details about swap chain support for a device
+    struct SwapChainSupportDetails
+    {
+        VkSurfaceCapabilitiesKHR capabilities;
+        std::vector<VkSurfaceFormatKHR> formats;
+        std::vector<VkPresentModeKHR> presentModes;
+    };
+    // Populate struct with support details
+    auto querySwapChainSupport(VkPhysicalDevice device) -> SwapChainSupportDetails;
+    // Check if a given device supports the required extensions
+    auto checkDeviceExtensionSupport(VkPhysicalDevice device) -> bool;
     // Rate the device based on type and available features
     auto ratePhysicalDevice(VkPhysicalDevice device) -> int;
     // Pick the device we want to use

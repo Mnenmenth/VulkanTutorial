@@ -146,6 +146,10 @@ auto TriangleApp::findQueueFamilies(VkPhysicalDevice device) -> TriangleApp::Que
     std::vector<VkQueueFamilyProperties> queueFamilies(queueFamilyCount);
     vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, queueFamilies.data());
 
+    // Iterate through found queue families until one is found
+    // that supports what we need
+    //** Note: Yes the double if statement is currently redundant, but apparently it will
+    // become more necessary later in the tutorial
     int i = 0;
     for(const auto& queueFamily : queueFamilies)
     {
@@ -172,9 +176,81 @@ auto TriangleApp::findQueueFamilies(VkPhysicalDevice device) -> TriangleApp::Que
     return indices;
 }
 
+auto TriangleApp::querySwapChainSupport(VkPhysicalDevice device) -> TriangleApp::SwapChainSupportDetails
+{
+    SwapChainSupportDetails details;
+
+    // Get capabilities, taking both the device and surface into account
+    vkGetPhysicalDeviceSurfaceCapabilitiesKHR(device, surface, &details.capabilities);
+
+    // Query number of supported surface formats
+    type::uint32 formatCount;
+    vkGetPhysicalDeviceSurfaceFormatsKHR(device, surface, &formatCount, nullptr);
+
+    // Actually get supported surface formats if there are any
+    if(formatCount != 0)
+    {
+        details.formats.resize(formatCount);
+        vkGetPhysicalDeviceSurfaceFormatsKHR(device, surface, &formatCount, details.formats.data());
+    }
+
+    // Query number of supported presentation modes
+    type::uint32 presentModeCount;
+    vkGetPhysicalDeviceSurfacePresentModesKHR(device, surface, &presentModeCount, nullptr);
+
+    // Actually get supported presentation modes if there are any
+    if(presentModeCount != 0)
+    {
+        vkGetPhysicalDeviceSurfacePresentModesKHR(device, surface, &presentModeCount, details.presentModes.data());
+    }
+
+
+
+    return details;
+}
+
+auto TriangleApp::checkDeviceExtensionSupport(VkPhysicalDevice device) -> bool
+{
+    // Get number of extensions supported by device
+    type::uint32 extensionCount;
+    vkEnumerateDeviceExtensionProperties(device, nullptr, &extensionCount, nullptr);
+
+    // Get extensions supported by device
+    std::vector<VkExtensionProperties> availableExtensions(extensionCount);
+    vkEnumerateDeviceExtensionProperties(device, nullptr, &extensionCount, availableExtensions.data());
+
+    // Set of the required extensions
+    std::set<std::string> requiredExtensions(deviceExtensions.begin(), deviceExtensions.end());
+
+    // Iterate through the available extensions and make sure that
+    // all required extensions are present
+    for(const auto& extension : availableExtensions)
+    {
+        requiredExtensions.erase(extension.extensionName);
+    }
+
+    return requiredExtensions.empty();
+}
+
 auto TriangleApp::ratePhysicalDevice(VkPhysicalDevice device) -> int
 {
-    if(!findQueueFamilies(device).isComplete())
+    // The device is not suitable if it doesn't
+    // support the required queue families
+    // and extensions
+    QueueFamilyIndices indices = findQueueFamilies(device);
+    bool extensionsSupported = checkDeviceExtensionSupport(device);
+
+    if(!indices.isComplete() || !extensionsSupported)
+    {
+        return 0;
+    }
+
+    // The device is not suitable if there is not at
+    // least one format and present mode
+    // ** Important: This check must be made after verifying
+    // that the extensions are supported **
+    SwapChainSupportDetails swapChainSupport = querySwapChainSupport(device);
+    if(swapChainSupport.formats.empty() || swapChainSupport.presentModes.empty())
     {
         return 0;
     }
@@ -260,7 +336,8 @@ auto TriangleApp::createLogicalDevice() -> void
     createInfo.queueCreateInfoCount = static_cast<type::uint32>(queueCreateInfos.size());
     createInfo.pQueueCreateInfos = queueCreateInfos.data();
     createInfo.pEnabledFeatures = &deviceFeatures;
-    createInfo.enabledExtensionCount = 0;
+    createInfo.enabledExtensionCount = static_cast<type::uint32>(deviceExtensions.size());
+    createInfo.ppEnabledExtensionNames = deviceExtensions.data();
 
     if(enableValidationLayers)
     {
