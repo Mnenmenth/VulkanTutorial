@@ -201,6 +201,7 @@ auto TriangleApp::querySwapChainSupport(VkPhysicalDevice device) -> TriangleApp:
     // Actually get supported presentation modes if there are any
     if(presentModeCount != 0)
     {
+        details.presentModes.resize(formatCount);
         vkGetPhysicalDeviceSurfacePresentModesKHR(device, surface, &presentModeCount, details.presentModes.data());
     }
 
