@@ -30,58 +30,71 @@ public:
     auto run() -> void;
 
 private:
-    GLFWwindow* window;
-    VkSurfaceKHR surface;
 
-    VkInstance instance;
-    VkDebugUtilsMessengerEXT debugMessenger;
-
-    VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;
-    VkDevice logicalDevice;
-
-    VkQueue graphicsQueue;
-    VkQueue presentQueue;
-    VkSwapchainKHR swapChain;
-    // Handles to swap chain images
-    std::vector<VkImage> swapChainImages;
-    std::vector<VkImageView> swapChainImageViews;
-    // Image format and extent chosen in initialization
-    VkFormat swapChainImageFormat;
-    VkExtent2D swapChainExtent;
-
-    // Required validation layers
-    const std::vector<type::cstr> validationLayers =
-            {
-                "VK_LAYER_KHRONOS_validation"
-            };
-    // Required device extensions
-    const std::vector<type::cstr> deviceExtensions =
-            {
-                VK_KHR_SWAPCHAIN_EXTENSION_NAME
-            };
 #ifdef NDEBUG
     static constexpr bool enableValidationLayers = false;
 #else
     static constexpr bool enableValidationLayers = true;
 #endif
 
+/*
+ * Window Initialization
+ */
+    GLFWwindow* window;
     auto initWindow() -> void;
+/*
+ * Vulkan Initialization
+ */
+    auto initVulkan() -> void;
 
+/* Instance Creation */
+    VkInstance instance;
+    // Required validation layers
+    const std::vector<type::cstr> validationLayers =
+            {
+                    "VK_LAYER_KHRONOS_validation"
+            };
+    // Required device extensions
+    const std::vector<type::cstr> deviceExtensions =
+            {
+                    VK_KHR_SWAPCHAIN_EXTENSION_NAME
+            };
+    // Check if validation layers are supported
+    auto checkValidationLayerSupport() -> bool;
+    // Get vulkan extensions required to run
+    auto getRequiredExtensions() -> std::vector<type::cstr>;
+    auto createInstance() -> void;
+
+/* Debug Messenger Setup */
+    VkDebugUtilsMessengerEXT debugMessenger;
     static auto debugCallback(
             VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
             VkDebugUtilsMessageTypeFlagsEXT messageType,
             const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData,
             void* pUserData
-            ) -> VKAPI_ATTR VkBool32 VKAPI_CALL;
+    ) -> VKAPI_ATTR VkBool32 VKAPI_CALL;
     // Utility function to fill info struct
     static auto populateDebugMessengerCreateInfo(VkDebugUtilsMessengerCreateInfoEXT& createInfo) -> void;
     auto setupDebugMessenger() -> void;
 
-    // Check if validation layers are supported
-    auto checkValidationLayerSupport() -> bool;
-    // Get vulkan extensions required to run
-    auto getRequiredExtensions() -> std::vector<type::cstr>;
+/* Surface Creation */
+    VkSurfaceKHR surface;
+    auto createSurface() -> void;
 
+/* Logical and Physical Device Creation */
+    VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;
+    VkDevice logicalDevice;
+    // Check if a given device supports the required extensions
+    auto checkDeviceExtensionSupport(VkPhysicalDevice device) -> bool;
+    // Rate the device based on type and available features
+    auto ratePhysicalDevice(VkPhysicalDevice device) -> int;
+    // Pick the device we want to use
+    auto pickPhysicalDevice() -> void;
+    auto createLogicalDevice() -> void;
+
+/* Queue Family Setup */
+    VkQueue graphicsQueue;
+    VkQueue presentQueue;
     // Hold the indices for the queue family from the list of queue families found
     struct QueueFamilyIndices
     {
@@ -94,6 +107,14 @@ private:
     // Check if the device supports the type of commands we want to send
     auto findQueueFamilies(VkPhysicalDevice device) -> QueueFamilyIndices;
 
+/* Swap Chain Creation */
+    VkSwapchainKHR swapChain;
+    // Handles to swap chain images
+    std::vector<VkImage> swapChainImages;
+    std::vector<VkImageView> swapChainImageViews;
+    // Image format and extent chosen in initialization
+    VkFormat swapChainImageFormat;
+    VkExtent2D swapChainExtent;
     // Details about swap chain support for a device
     struct SwapChainSupportDetails
     {
@@ -109,21 +130,12 @@ private:
     auto chooseSwapPresentMode(const std::vector<VkPresentModeKHR>& availablePresentModes) -> VkPresentModeKHR;
     // Choose the swap extent that matches the window resolution
     auto chooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilities) -> VkExtent2D;
-
-    // Check if a given device supports the required extensions
-    auto checkDeviceExtensionSupport(VkPhysicalDevice device) -> bool;
-    // Rate the device based on type and available features
-    auto ratePhysicalDevice(VkPhysicalDevice device) -> int;
-    // Pick the device we want to use
-    auto pickPhysicalDevice() -> void;
-
     auto createSwapChain() -> void;
     auto createImageViews() -> void;
-    auto createLogicalDevice() -> void;
-    auto createInstance() -> void;
-    auto createSurface() -> void;
-    auto initVulkan() -> void;
 
+/*
+ * Application Maintenance
+ */
     auto mainLoop() -> void;
     auto cleanup() -> void;
 };
