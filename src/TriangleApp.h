@@ -34,11 +34,20 @@ private:
     VkSurfaceKHR surface;
 
     VkInstance instance;
+    VkDebugUtilsMessengerEXT debugMessenger;
+
     VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;
     VkDevice logicalDevice;
+
     VkQueue graphicsQueue;
     VkQueue presentQueue;
-    VkDebugUtilsMessengerEXT debugMessenger;
+    VkSwapchainKHR swapChain;
+    // Handles to swap chain images
+    std::vector<VkImage> swapChainImages;
+    std::vector<VkImageView> swapChainImageViews;
+    // Image format and extent chosen in initialization
+    VkFormat swapChainImageFormat;
+    VkExtent2D swapChainExtent;
 
     // Required validation layers
     const std::vector<type::cstr> validationLayers =
@@ -84,15 +93,23 @@ private:
     };
     // Check if the device supports the type of commands we want to send
     auto findQueueFamilies(VkPhysicalDevice device) -> QueueFamilyIndices;
+
     // Details about swap chain support for a device
     struct SwapChainSupportDetails
     {
         VkSurfaceCapabilitiesKHR capabilities;
+        // List of available color depths and formats
         std::vector<VkSurfaceFormatKHR> formats;
+        // Conditions for presenting images to the screen/how they're queued to be presented
         std::vector<VkPresentModeKHR> presentModes;
     };
     // Populate struct with support details
     auto querySwapChainSupport(VkPhysicalDevice device) -> SwapChainSupportDetails;
+    auto chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& availableFormats) -> VkSurfaceFormatKHR;
+    auto chooseSwapPresentMode(const std::vector<VkPresentModeKHR>& availablePresentModes) -> VkPresentModeKHR;
+    // Choose the swap extent that matches the window resolution
+    auto chooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilities) -> VkExtent2D;
+
     // Check if a given device supports the required extensions
     auto checkDeviceExtensionSupport(VkPhysicalDevice device) -> bool;
     // Rate the device based on type and available features
@@ -100,8 +117,9 @@ private:
     // Pick the device we want to use
     auto pickPhysicalDevice() -> void;
 
+    auto createSwapChain() -> void;
+    auto createImageViews() -> void;
     auto createLogicalDevice() -> void;
-
     auto createInstance() -> void;
     auto createSurface() -> void;
     auto initVulkan() -> void;
