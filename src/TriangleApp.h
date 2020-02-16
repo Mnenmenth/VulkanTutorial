@@ -148,6 +148,15 @@ private:
     std::vector<VkFramebuffer> swapChainFramebuffers;
     auto createFramebuffers() -> void;
 
+/* Command Pool Creation */
+    //** Command pools manage memory for buffers and command buffers
+    VkCommandPool commandPool;
+    auto createCommandPool() -> void;
+
+/* Command Buffer Allocation */
+    std::vector<VkCommandBuffer> commandBuffers;
+    auto createCommandBuffers() -> void;
+
 /*
  * Application Maintenance
  */
