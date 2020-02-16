@@ -133,6 +133,11 @@ private:
     auto createSwapChain() -> void;
     auto createImageViews() -> void;
 
+/* Graphics Pipeline Creation */
+    static auto readFile(const std::string& fileName, std::vector<char>& buffer) -> std::vector<char>;
+    auto createShaderModule(const std::vector<char>& code) -> VkShaderModule;
+    auto createGraphicsPipeline() -> void;
+
 /*
  * Application Maintenance
  */

@@ -8,6 +8,7 @@
 #include <cstring>
 #include <map>
 #include <set>
+#include <fstream>
 #include "TriangleApp.h"
 
 auto TriangleApp::run() -> void
@@ -48,6 +49,7 @@ auto TriangleApp::initVulkan() -> void
     createLogicalDevice();
     createSwapChain();
     createImageViews();
+    createGraphicsPipeline();
 }
 
 /**
@@ -388,7 +390,7 @@ auto TriangleApp::createLogicalDevice() -> void
     vkGetDeviceQueue(logicalDevice, indices.presentFamily.value(), 0, &presentQueue);
 }
 
-/*
+/**
  * Queue Family Setup
  */
 auto TriangleApp::findQueueFamilies(VkPhysicalDevice device) -> TriangleApp::QueueFamilyIndices
@@ -608,7 +610,7 @@ auto TriangleApp::createSwapChain() -> void
     swapChainExtent = extent;
 }
 
-/* Image View Creation */
+/** Image View Creation */
 
 auto TriangleApp::createImageViews() -> void
 {
@@ -645,6 +647,72 @@ auto TriangleApp::createImageViews() -> void
             throw std::runtime_error("Image view creation failed");
         }
     }
+}
+
+/**
+ * Graphics Pipeline Creation
+ */
+auto TriangleApp::readFile(const std::string& fileName, std::vector<char>& buffer) -> std::vector<char>
+{
+    std::ifstream file(fileName, std::ios::ate | std::ios::binary);
+
+    type::size fileSize = static_cast<type::size>(file.tellg());
+    buffer.resize(fileSize);
+
+    file.seekg(0);
+    file.read(buffer.data(), fileSize);
+    file.close();
+
+    return buffer;
+}
+
+auto TriangleApp::createShaderModule(const std::vector<char> &code) -> VkShaderModule
+{
+    VkShaderModuleCreateInfo createInfo = {};
+    createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+    createInfo.codeSize = code.size();
+    // Vector class already ensures data alignment requirements
+    createInfo.pCode = reinterpret_cast<const type::uint32*>(code.data());
+
+    VkShaderModule shaderModule;
+    if(vkCreateShaderModule(logicalDevice, &createInfo, nullptr, &shaderModule) != VK_SUCCESS)
+    {
+        throw std::runtime_error("Failed to create shader module");
+    }
+    return shaderModule;
+}
+
+auto TriangleApp::createGraphicsPipeline() -> void
+{
+    std::vector<char> vertShaderCode, fragShaderCode;
+    readFile("shaders/triangle.vert.spv", vertShaderCode);
+    readFile("shaders/triangle.frag.spv", fragShaderCode);
+
+    VkShaderModule vertShaderModule = createShaderModule(vertShaderCode);
+    VkShaderModule fragShaderModule = createShaderModule(fragShaderCode);
+
+    VkPipelineShaderStageCreateInfo vertShaderStageInfo = {};
+    vertShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    vertShaderStageInfo.stage = VK_SHADER_STAGE_VERTEX_BIT;
+    vertShaderStageInfo.module = vertShaderModule;
+    // Specify the shader entry point
+        // It is possible to have multiple entry points and combined multiple
+        // shaders into a single shader module
+    vertShaderStageInfo.pName = "main";
+    // This allows constants to be specified at compile time, meaning
+    // that the shaders can contain configuration code to eliminate the need
+    // for runtime if statements and such
+    vertShaderStageInfo.pSpecializationInfo = nullptr;
+
+    VkPipelineShaderStageCreateInfo fragShaderStageInfo = {};
+    fragShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    fragShaderStageInfo.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+    fragShaderStageInfo.pName = "main";
+
+    VkPipelineShaderStageCreateInfo shaderStages[] = {vertShaderStageInfo, fragShaderStageInfo};
+
+    vkDestroyShaderModule(logicalDevice, fragShaderModule, nullptr);
+    vkDestroyShaderModule(logicalDevice, vertShaderModule, nullptr);
 }
 
 auto TriangleApp::mainLoop() -> void
