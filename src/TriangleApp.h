@@ -26,6 +26,9 @@ class TriangleApp
 public:
     static constexpr int WIN_WIDTH = 800;
     static constexpr int WIN_HEIGHT = 600;
+    // Allow graphics pipeline to work on rendering
+        // more images before image is done being presented
+    static constexpr int MAX_FRAMES_IN_FLIGHT = 2;
 
     auto run() -> void;
 
@@ -157,10 +160,14 @@ private:
     std::vector<VkCommandBuffer> commandBuffers;
     auto createCommandBuffers() -> void;
 
-/* Semaphore Creation - For syncing command buffers */
-    VkSemaphore imageAvailableSemaphore;
-    VkSemaphore renderFinishedSemaphore;
-    auto createSemaphores() -> void;
+/* Semaphore and Fence Creation - For syncing command buffers */
+    std::vector<VkSemaphore> imageAvailableSemaphores;
+    std::vector<VkSemaphore> renderFinishedSemaphores;
+    std::vector<VkFence> inFlightFences;
+    std::vector<VkFence> imagesInFlight;
+    type::size currentFrame = 0;
+    auto createSyncObjects() -> void;
+
 
 /*
  * Application Maintenance

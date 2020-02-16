@@ -54,7 +54,7 @@ auto TriangleApp::initVulkan() -> void
     createFramebuffers();
     createCommandPool();
     createCommandBuffers();
-    createSemaphores();
+    createSyncObjects();
 }
 
 /**
@@ -1111,18 +1111,32 @@ auto TriangleApp::createCommandBuffers() -> void
 /**
  * Semaphore Creation
  */
-auto TriangleApp::createSemaphores() -> void
+auto TriangleApp::createSyncObjects() -> void
 {
+    imageAvailableSemaphores.resize(MAX_FRAMES_IN_FLIGHT);
+    renderFinishedSemaphores.resize(MAX_FRAMES_IN_FLIGHT);
+    inFlightFences.resize(MAX_FRAMES_IN_FLIGHT);
+    imagesInFlight.resize(swapChainImages.size(), VK_NULL_HANDLE);
+
     VkSemaphoreCreateInfo semaphoreInfo = {};
     semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
 
-    if(vkCreateSemaphore(logicalDevice, &semaphoreInfo, nullptr, &imageAvailableSemaphore) != VK_SUCCESS ||
-        vkCreateSemaphore(logicalDevice, &semaphoreInfo, nullptr, &renderFinishedSemaphore) != VK_SUCCESS
-    )
-    {
-        throw std::runtime_error("Semaphore creation failed");
-    }
+    VkFenceCreateInfo fenceInfo = {};
+    fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+    // Initialize fence to already signaled so it doesn't
+        // hang on first frame
+    fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
 
+    for(type::size i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i)
+    {
+        if(vkCreateSemaphore(logicalDevice, &semaphoreInfo, nullptr, &imageAvailableSemaphores[i]) != VK_SUCCESS ||
+           vkCreateSemaphore(logicalDevice, &semaphoreInfo, nullptr, &renderFinishedSemaphores[i]) != VK_SUCCESS ||
+           vkCreateFence(logicalDevice, &fenceInfo, nullptr, &inFlightFences[i]) != VK_SUCCESS
+        )
+        {
+            throw std::runtime_error("Semaphore creation failed");
+        }
+    }
 }
 
 /**
@@ -1133,17 +1147,28 @@ auto TriangleApp::createSemaphores() -> void
 
 auto TriangleApp::drawFrame() -> void
 {
+    // Sync queues before continuing
+    vkWaitForFences(logicalDevice, 1, &inFlightFences[currentFrame], VK_TRUE, type::uint64_max);
+
     /* Submit image to queue */
     // Get image from swap chain
     type::uint32 imageIndex;
     // uint64 max value for timeout disables timeout. Fence is null since we're using semaphores, not fences
-    vkAcquireNextImageKHR(logicalDevice, swapChain, type::uint64_max, imageAvailableSemaphore, VK_NULL_HANDLE, &imageIndex);
+    vkAcquireNextImageKHR(logicalDevice, swapChain, type::uint64_max, imageAvailableSemaphores[currentFrame], VK_NULL_HANDLE, &imageIndex);
+
+    // Check if a previous frame is still using this image
+    if(imagesInFlight[imageIndex] != VK_NULL_HANDLE)
+    {
+        vkWaitForFences(logicalDevice, 1, &imagesInFlight[imageIndex], VK_TRUE, type::uint64_max);
+    }
+    // Mark image as in use
+    imagesInFlight[imageIndex] = inFlightFences[currentFrame];
 
     VkSubmitInfo submitInfo = {};
     submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
 
     // Wait until image is available
-    VkSemaphore waitSemaphores[] = {imageAvailableSemaphore};
+    VkSemaphore waitSemaphores[] = {imageAvailableSemaphores[currentFrame]};
     // Wait at the color attachment stage
     VkPipelineStageFlags waitStages[] = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
     // Which semaphores to wait on and what stages in execution to wait at
@@ -1154,11 +1179,12 @@ auto TriangleApp::drawFrame() -> void
     submitInfo.commandBufferCount = 1;
     submitInfo.pCommandBuffers = &commandBuffers[imageIndex];
     // Which semaphores to signal when the command buffers have finished
-    VkSemaphore signalSemaphores[] = {renderFinishedSemaphore};
+    VkSemaphore signalSemaphores[] = {renderFinishedSemaphores[currentFrame]};
     submitInfo.signalSemaphoreCount = 1;
     submitInfo.pSignalSemaphores = signalSemaphores;
 
-    if(vkQueueSubmit(graphicsQueue, 1, &submitInfo, VK_NULL_HANDLE) != VK_SUCCESS)
+    vkResetFences(logicalDevice, 1, &inFlightFences[currentFrame]);
+    if(vkQueueSubmit(graphicsQueue, 1, &submitInfo, inFlightFences[currentFrame]) != VK_SUCCESS)
     {
         throw std::runtime_error("Command buffer submission failed");
     }
@@ -1181,8 +1207,8 @@ auto TriangleApp::drawFrame() -> void
     presentInfo.pResults = nullptr;
 
     vkQueuePresentKHR(presentQueue, &presentInfo);
-    //**** Bad and inefficient, but lets stuff render correctly for now *****
-    vkQueueWaitIdle(presentQueue);
+
+    currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
 }
 
 auto TriangleApp::mainLoop() -> void
@@ -1192,12 +1218,18 @@ auto TriangleApp::mainLoop() -> void
         glfwPollEvents();
         drawFrame();
     }
+    // Sync everything before exiting and cleaning up memory
+    vkDeviceWaitIdle(logicalDevice);
 }
 
 auto TriangleApp::cleanup() -> void
 {
-    vkDestroySemaphore(logicalDevice, renderFinishedSemaphore, nullptr);
-    vkDestroySemaphore(logicalDevice, imageAvailableSemaphore, nullptr);
+    for(type::size i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i)
+    {
+        vkDestroySemaphore(logicalDevice, renderFinishedSemaphores[i], nullptr);
+        vkDestroySemaphore(logicalDevice, imageAvailableSemaphores[i], nullptr);
+        vkDestroyFence(logicalDevice, inFlightFences[i], nullptr);
+    }
 
     vkDestroyCommandPool(logicalDevice, commandPool, nullptr);
 
