@@ -157,9 +157,18 @@ private:
     std::vector<VkCommandBuffer> commandBuffers;
     auto createCommandBuffers() -> void;
 
+/* Semaphore Creation - For syncing command buffers */
+    VkSemaphore imageAvailableSemaphore;
+    VkSemaphore renderFinishedSemaphore;
+    auto createSemaphores() -> void;
+
 /*
  * Application Maintenance
  */
+    // Get image from swap chain,
+    // Execute image as attachment for framebuffer
+    // Return image to swap chain for presentation
+    auto drawFrame() -> void;
     auto mainLoop() -> void;
     auto cleanup() -> void;
 };

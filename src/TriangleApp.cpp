@@ -54,6 +54,7 @@ auto TriangleApp::initVulkan() -> void
     createFramebuffers();
     createCommandPool();
     createCommandBuffers();
+    createSemaphores();
 }
 
 /**
@@ -665,13 +666,15 @@ auto TriangleApp::createRenderPass() -> void
     colorAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
     // What to do with data before and after rendering
         // Applies to color and depth data
-    // We're just rendering for now, so we don't care about the data
-        // as long as it renders
-    colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-    colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    // We want to present a rendered triangle, so we're
+        // going to store
+    colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
     //** Stencil config is set by stencilLoadOp and stencilStoreOp
         // but we're not doing anything with that for now so it can be
         // left out
+    colorAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    colorAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
     // Set pixel layout in memory for framebuffers and textures
         // initialLayout is the layout of an image before render pass
         // finalLayout is what to transition to after render pass
@@ -711,12 +714,29 @@ auto TriangleApp::createRenderPass() -> void
         // fragment shader by the layout(location = 0) out vec4 outColor;
     subpass.pColorAttachments = &colorAttachmentRef;
 
+    // Subpass dependencies
+    VkSubpassDependency dependency = {};
+    // Set dependency to implicit subpass before render
+    dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
+    // Index of subpass that we depend on after render
+    dependency.dstSubpass = 0;
+    // Wait for swap chain to reading image before accessing by waiting for
+        // for the color attachment output
+    dependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    dependency.srcAccessMask = 0;
+    // Prevent transition from happening until reading and writing of color attachment
+        // is done
+    dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+
     VkRenderPassCreateInfo renderPassInfo = {};
     renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
     renderPassInfo.attachmentCount = 1;
     renderPassInfo.pAttachments = &colorAttachment;
     renderPassInfo.subpassCount = 1;
     renderPassInfo.pSubpasses = &subpass;
+    renderPassInfo.dependencyCount = 1;
+    renderPassInfo.pDependencies = &dependency;
 
     if(vkCreateRenderPass(logicalDevice, &renderPassInfo, nullptr, &renderPass) != VK_SUCCESS)
     {
@@ -1089,19 +1109,96 @@ auto TriangleApp::createCommandBuffers() -> void
 }
 
 /**
- * Application Maintenance
+ * Semaphore Creation
  */
+auto TriangleApp::createSemaphores() -> void
+{
+    VkSemaphoreCreateInfo semaphoreInfo = {};
+    semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+
+    if(vkCreateSemaphore(logicalDevice, &semaphoreInfo, nullptr, &imageAvailableSemaphore) != VK_SUCCESS ||
+        vkCreateSemaphore(logicalDevice, &semaphoreInfo, nullptr, &renderFinishedSemaphore) != VK_SUCCESS
+    )
+    {
+        throw std::runtime_error("Semaphore creation failed");
+    }
+
+}
+
+/**
+ *
+ * Application Maintenance
+ *
+ */
+
+auto TriangleApp::drawFrame() -> void
+{
+    /* Submit image to queue */
+    // Get image from swap chain
+    type::uint32 imageIndex;
+    // uint64 max value for timeout disables timeout. Fence is null since we're using semaphores, not fences
+    vkAcquireNextImageKHR(logicalDevice, swapChain, type::uint64_max, imageAvailableSemaphore, VK_NULL_HANDLE, &imageIndex);
+
+    VkSubmitInfo submitInfo = {};
+    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+
+    // Wait until image is available
+    VkSemaphore waitSemaphores[] = {imageAvailableSemaphore};
+    // Wait at the color attachment stage
+    VkPipelineStageFlags waitStages[] = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
+    // Which semaphores to wait on and what stages in execution to wait at
+    submitInfo.waitSemaphoreCount = 1;
+    submitInfo.pWaitSemaphores = waitSemaphores;
+    submitInfo.pWaitDstStageMask = waitStages;
+    // Which command buffers to submit for execution
+    submitInfo.commandBufferCount = 1;
+    submitInfo.pCommandBuffers = &commandBuffers[imageIndex];
+    // Which semaphores to signal when the command buffers have finished
+    VkSemaphore signalSemaphores[] = {renderFinishedSemaphore};
+    submitInfo.signalSemaphoreCount = 1;
+    submitInfo.pSignalSemaphores = signalSemaphores;
+
+    if(vkQueueSubmit(graphicsQueue, 1, &submitInfo, VK_NULL_HANDLE) != VK_SUCCESS)
+    {
+        throw std::runtime_error("Command buffer submission failed");
+    }
+
+    /* Presentation */
+    VkPresentInfoKHR presentInfo = {};
+    presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+    // Which semaphores to wait on before presentation
+    presentInfo.waitSemaphoreCount = 1;
+    presentInfo.pWaitSemaphores = signalSemaphores;
+    // Swap chains to present images to
+    VkSwapchainKHR swapChains[] = {swapChain};
+    presentInfo.swapchainCount = 1;
+    presentInfo.pSwapchains = swapChains;
+    // Index of image for each swapchain
+    presentInfo.pImageIndices = &imageIndex;
+    // Array of VkResult values to check
+    // presentation success for each swap chain.
+        // Unnecessary since we have only one swap chain
+    presentInfo.pResults = nullptr;
+
+    vkQueuePresentKHR(presentQueue, &presentInfo);
+    //**** Bad and inefficient, but lets stuff render correctly for now *****
+    vkQueueWaitIdle(presentQueue);
+}
 
 auto TriangleApp::mainLoop() -> void
 {
     while(!glfwWindowShouldClose(window))
     {
         glfwPollEvents();
+        drawFrame();
     }
 }
 
 auto TriangleApp::cleanup() -> void
 {
+    vkDestroySemaphore(logicalDevice, renderFinishedSemaphore, nullptr);
+    vkDestroySemaphore(logicalDevice, imageAvailableSemaphore, nullptr);
+
     vkDestroyCommandPool(logicalDevice, commandPool, nullptr);
 
     for(auto& framebuffer : swapChainFramebuffers)
