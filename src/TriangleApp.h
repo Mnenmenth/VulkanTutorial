@@ -144,6 +144,10 @@ private:
     auto createShaderModule(const std::vector<char>& code) -> VkShaderModule;
     auto createGraphicsPipeline() -> void;
 
+/* Swap Chain Framebuffers Creation */
+    std::vector<VkFramebuffer> swapChainFramebuffers;
+    auto createFramebuffers() -> void;
+
 /*
  * Application Maintenance
  */

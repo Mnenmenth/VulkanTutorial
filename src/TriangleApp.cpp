@@ -51,6 +51,7 @@ auto TriangleApp::initVulkan() -> void
     createImageViews();
     createRenderPass();
     createGraphicsPipeline();
+    createFramebuffers();
 }
 
 /**
@@ -957,6 +958,41 @@ auto TriangleApp::createGraphicsPipeline() -> void
     vkDestroyShaderModule(logicalDevice, vertShaderModule, nullptr);
 }
 
+/**
+ * Swap Chain Framebuffers Creation
+ */
+auto TriangleApp::createFramebuffers() -> void
+{
+    swapChainFramebuffers.resize(swapChainImageViews.size());
+
+    // Create framebuffers for each image view
+    for(type::size i = 0; i < swapChainImageViews.size(); ++i)
+    {
+        VkImageView attachments[] =
+                {
+                    swapChainImageViews[i]
+                };
+
+        VkFramebufferCreateInfo framebufferInfo = {};
+        framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+        framebufferInfo.renderPass = renderPass;
+        framebufferInfo.attachmentCount = 1;
+        framebufferInfo.pAttachments = attachments;
+        framebufferInfo.width = swapChainExtent.width;
+        framebufferInfo.height = swapChainExtent.height;
+        framebufferInfo.layers = 1;
+
+        if(vkCreateFramebuffer(logicalDevice, &framebufferInfo, nullptr, &swapChainFramebuffers[i]) != VK_SUCCESS)
+        {
+            throw std::runtime_error("Framebuffer creation failed");
+        }
+    }
+}
+
+/**
+ * Application Maintenance
+ */
+
 auto TriangleApp::mainLoop() -> void
 {
     while(!glfwWindowShouldClose(window))
@@ -967,6 +1003,11 @@ auto TriangleApp::mainLoop() -> void
 
 auto TriangleApp::cleanup() -> void
 {
+    for(auto& framebuffer : swapChainFramebuffers)
+    {
+        vkDestroyFramebuffer(logicalDevice, framebuffer, nullptr);
+    }
+
     vkDestroyPipeline(logicalDevice, graphicsPipeline, nullptr);
     vkDestroyPipelineLayout(logicalDevice, pipelineLayout, nullptr);
     vkDestroyRenderPass(logicalDevice, renderPass, nullptr);
