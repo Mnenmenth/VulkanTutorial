@@ -45,7 +45,8 @@ private:
  */
     GLFWwindow* window;
     auto initWindow() -> void;
-/*
+    static auto framebufferResizeCallback(GLFWwindow* window, int width, int height) -> void;
+    /*
  * Vulkan Initialization
  */
     auto initVulkan() -> void;
@@ -135,6 +136,10 @@ private:
     auto chooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilities) -> VkExtent2D;
     auto createSwapChain() -> void;
     auto createImageViews() -> void;
+    auto cleanupSwapchain() -> void;
+    // For recreating the swap chain in the event of something like a window resize
+    auto recreateSwapChain() -> void;
+
 
 /* Render Pass Setup */
     VkRenderPass renderPass;
@@ -166,6 +171,7 @@ private:
     std::vector<VkFence> inFlightFences;
     std::vector<VkFence> imagesInFlight;
     type::size currentFrame = 0;
+    bool framebufferResized = false;
     auto createSyncObjects() -> void;
 
 

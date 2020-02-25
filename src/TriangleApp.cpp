@@ -29,10 +29,17 @@ auto TriangleApp::initWindow() -> void
     glfwInit();
 
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-    glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
 
     window = glfwCreateWindow(WIN_WIDTH, WIN_HEIGHT, "Vulkan App", nullptr, nullptr);
+    glfwSetWindowUserPointer(window, this);
+    glfwSetFramebufferSizeCallback(window, framebufferResizeCallback);
 
+}
+
+auto TriangleApp::framebufferResizeCallback(GLFWwindow *window, int width, int height) -> void
+{
+    auto app = reinterpret_cast<TriangleApp*>(glfwGetWindowUserPointer(window));
+    app->framebufferResized = true;
 }
 
 /**
@@ -516,8 +523,14 @@ auto TriangleApp::chooseSwapExtent(const VkSurfaceCapabilitiesKHR &capabilities)
         // Vulkan says that window manager allows custom resolution
     else
     {
+        int width, height;
+        glfwGetFramebufferSize(window, &width, &height);
         // Determine if vulkan's resolution or our custom resolution is the best fit
-        VkExtent2D actualExtent = {WIN_WIDTH, WIN_HEIGHT};
+        VkExtent2D actualExtent =
+                {
+                    static_cast<type::uint32>(width),
+                    static_cast<type::uint32>(height)
+                };
 
         actualExtent.width = std::max(capabilities.minImageExtent.width, std::min(capabilities.maxImageExtent.width, actualExtent.width));
         actualExtent.height = std::max(capabilities.minImageExtent.height, std::min(capabilities.maxImageExtent.height, actualExtent.height));
@@ -652,6 +665,54 @@ auto TriangleApp::createImageViews() -> void
             throw std::runtime_error("Image view creation failed");
         }
     }
+}
+
+/** Cleanup swapchain */
+auto TriangleApp::cleanupSwapchain() -> void
+{
+    for(type::size i = 0; i < swapChainFramebuffers.size(); ++i)
+    {
+        vkDestroyFramebuffer(logicalDevice, swapChainFramebuffers[i], nullptr);
+    }
+
+    vkFreeCommandBuffers(logicalDevice, commandPool, static_cast<type::uint32>(commandBuffers.size()), commandBuffers.data());
+
+    vkDestroyPipeline(logicalDevice, graphicsPipeline, nullptr);
+    vkDestroyPipelineLayout(logicalDevice, pipelineLayout, nullptr);
+    vkDestroyRenderPass(logicalDevice, renderPass, nullptr);
+
+    for(type::size i = 0; i < swapChainImageViews.size(); ++i)
+    {
+        vkDestroyImageView(logicalDevice, swapChainImageViews[i], nullptr);
+    }
+
+    vkDestroySwapchainKHR(logicalDevice, swapChain, nullptr);
+}
+
+/** Recreate swap chain */
+auto TriangleApp::recreateSwapChain() -> void
+{
+    // Frame buffer size is 0 while window is minimizing,
+        // so wait until its not
+    int width, height = 0;
+    glfwGetFramebufferSize(window, &width, &height);
+    while(width == 0 || height == 0)
+    {
+        glfwGetFramebufferSize(window, &width, &height);
+        glfwWaitEvents();
+    }
+
+    // Make sure no resources are in use
+    vkDeviceWaitIdle(logicalDevice);
+
+    cleanupSwapchain();
+
+    createSwapChain();
+    createImageViews();
+    createRenderPass();
+    createGraphicsPipeline();
+    createFramebuffers();
+    createCommandBuffers();
 }
 
 /**
@@ -1154,7 +1215,17 @@ auto TriangleApp::drawFrame() -> void
     // Get image from swap chain
     type::uint32 imageIndex;
     // uint64 max value for timeout disables timeout. Fence is null since we're using semaphores, not fences
-    vkAcquireNextImageKHR(logicalDevice, swapChain, type::uint64_max, imageAvailableSemaphores[currentFrame], VK_NULL_HANDLE, &imageIndex);
+    VkResult result = vkAcquireNextImageKHR(logicalDevice, swapChain, type::uint64_max, imageAvailableSemaphores[currentFrame], VK_NULL_HANDLE, &imageIndex);
+    // Create new swap chain if needed
+    if(result == VK_ERROR_OUT_OF_DATE_KHR)
+    {
+        recreateSwapChain();
+        return;
+    }
+    else if(result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR)
+    {
+        throw std::runtime_error("Failed to acquire swap chain image");
+    }
 
     // Check if a previous frame is still using this image
     if(imagesInFlight[imageIndex] != VK_NULL_HANDLE)
@@ -1206,7 +1277,16 @@ auto TriangleApp::drawFrame() -> void
         // Unnecessary since we have only one swap chain
     presentInfo.pResults = nullptr;
 
-    vkQueuePresentKHR(presentQueue, &presentInfo);
+    result = vkQueuePresentKHR(presentQueue, &presentInfo);
+    if(result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR || framebufferResized)
+    {
+        framebufferResized = false;
+        recreateSwapChain();
+    }
+    else if (result != VK_SUCCESS)
+    {
+        throw std::runtime_error("Failed to present swap chain image");
+    }
 
     currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
 }
@@ -1224,6 +1304,8 @@ auto TriangleApp::mainLoop() -> void
 
 auto TriangleApp::cleanup() -> void
 {
+    cleanupSwapchain();
+
     for(type::size i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i)
     {
         vkDestroySemaphore(logicalDevice, renderFinishedSemaphores[i], nullptr);
@@ -1232,22 +1314,6 @@ auto TriangleApp::cleanup() -> void
     }
 
     vkDestroyCommandPool(logicalDevice, commandPool, nullptr);
-
-    for(auto& framebuffer : swapChainFramebuffers)
-    {
-        vkDestroyFramebuffer(logicalDevice, framebuffer, nullptr);
-    }
-
-    vkDestroyPipeline(logicalDevice, graphicsPipeline, nullptr);
-    vkDestroyPipelineLayout(logicalDevice, pipelineLayout, nullptr);
-    vkDestroyRenderPass(logicalDevice, renderPass, nullptr);
-
-    for(auto imageView : swapChainImageViews)
-    {
-        vkDestroyImageView(logicalDevice, imageView, nullptr);
-    }
-
-    vkDestroySwapchainKHR(logicalDevice, swapChain, nullptr);
 
     vkDestroyDevice(logicalDevice, nullptr);
 
