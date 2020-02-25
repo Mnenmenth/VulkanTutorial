@@ -17,7 +17,7 @@ add_custom_target(SHADERS_SCRIPT
 file(GLOB_RECURSE SRC "${CMAKE_SOURCE_DIR}/src/*.cpp" "${CMAKE_SOURCE_DIR}/src/*.h")
 
 add_executable(VulkanTutorial ${SRC})
-target_include_directories(VulkanTutorial PRIVATE Vulkan::Vulkan)
+target_include_directories(VulkanTutorial PRIVATE Vulkan::Vulkan glm)
 target_link_libraries(VulkanTutorial glfw Vulkan::Vulkan)
 ## Compile Shaders
 add_dependencies(VulkanTutorial SHADERS_SCRIPT)

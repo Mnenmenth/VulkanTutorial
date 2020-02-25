@@ -10,6 +10,7 @@
 #include <set>
 #include <fstream>
 #include "TriangleApp.h"
+#include "Vertex.h"
 
 auto TriangleApp::run() -> void
 {
@@ -718,6 +719,7 @@ auto TriangleApp::recreateSwapChain() -> void
 /**
  * Render Pass Setup
  */
+#include <glm/glm.hpp>
 auto TriangleApp::createRenderPass() -> void
 {
     VkAttachmentDescription colorAttachment = {};
@@ -874,11 +876,12 @@ auto TriangleApp::createGraphicsPipeline() -> void
 
     VkPipelineVertexInputStateCreateInfo vertexInputInfo = {};
     vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
-    // No vertex data will be entered *for now* since vertices are currently hardcoded in shader
-    vertexInputInfo.vertexBindingDescriptionCount = 0;
-    vertexInputInfo.pVertexBindingDescriptions = nullptr;
-    vertexInputInfo.vertexAttributeDescriptionCount = 0;
-    vertexInputInfo.pVertexAttributeDescriptions = nullptr;
+    auto bindingDesc = Vertex::getBindingDescription();
+    auto attributeDescs = Vertex::getAttributeDescriptions();
+    vertexInputInfo.vertexBindingDescriptionCount = 1;
+    vertexInputInfo.vertexAttributeDescriptionCount = static_cast<type::uint32>(attributeDescs.size());
+    vertexInputInfo.pVertexBindingDescriptions = &bindingDesc;
+    vertexInputInfo.pVertexAttributeDescriptions = attributeDescs.data();
 
     // Sets what kind of geometry is being drawn from vertices (triangle strips, point list, etc)
     // and if primitive restart should be enabled (which is for stuff like element buffers)
