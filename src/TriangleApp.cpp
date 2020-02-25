@@ -61,6 +61,7 @@ auto TriangleApp::initVulkan() -> void
     createGraphicsPipeline();
     createFramebuffers();
     createCommandPool();
+    createVertexBuffer();
     createCommandBuffers();
     createSyncObjects();
 }
@@ -1097,6 +1098,24 @@ auto TriangleApp::createCommandPool() -> void
 }
 
 /**
+ * Vertex Buffer Creation
+ */
+auto TriangleApp::createVertexBuffer() -> void
+{
+    VkBufferCreateInfo bufferInfo = {};
+    bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+    bufferInfo.size = sizeof(vertices[0]) * vertices.size();
+    bufferInfo.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+    // Only one queue can own this buffer at a time
+    bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+    if(vkCreateBuffer(logicalDevice, &bufferInfo, nullptr, &vertexBuffer) != VK_SUCCESS)
+    {
+        throw std::runtime_error("Failed to create vertex buffer");
+    }
+}
+
+/**
  * Command Buffer Allocation
  */
 auto TriangleApp::createCommandBuffers() -> void
@@ -1308,6 +1327,8 @@ auto TriangleApp::mainLoop() -> void
 auto TriangleApp::cleanup() -> void
 {
     cleanupSwapchain();
+
+    vkDestroyBuffer(logicalDevice, vertexBuffer, nullptr);
 
     for(type::size i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i)
     {

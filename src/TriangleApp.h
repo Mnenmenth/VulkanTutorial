@@ -12,6 +12,7 @@
 #include <vector>
 
 #include "types.h"
+#include "Vertex.h"
 #include <optional>
 
 /**
@@ -160,6 +161,17 @@ private:
     //** Command pools manage memory for buffers and command buffers
     VkCommandPool commandPool;
     auto createCommandPool() -> void;
+
+/* Vertex Buffer Creation */
+    static constexpr std::array<Vertex, 3> vertices =
+            {
+                    Vertex{{ 0.0f, -0.5f}, { 1.0f,  0.0f,  0.0f}},
+                    Vertex{{ 0.5f,  0.5f}, { 0.0f,  1.0f,  0.0f}},
+                    Vertex{{-0.5f,  0.5f}, { 0.0f,  0.0f,  1.0f}}
+
+            };
+    VkBuffer vertexBuffer;
+    auto createVertexBuffer() -> void;
 
 /* Command Buffer Allocation */
     std::vector<VkCommandBuffer> commandBuffers;
