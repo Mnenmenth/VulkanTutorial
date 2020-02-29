@@ -39,6 +39,11 @@ struct Vertex
         descs[0].format = VK_FORMAT_R32G32_SFLOAT;
         // Offset of pos member in struct in bytes
         descs[0].offset = offsetof(Vertex, pos);
+
+        descs[1].binding = 0;
+        descs[1].location = 1;
+        descs[1].format = VK_FORMAT_R32G32B32_SFLOAT;
+        descs[1].offset = offsetof(Vertex, color);
         return descs;
     }
 

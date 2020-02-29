@@ -171,6 +171,10 @@ private:
 
             };
     VkBuffer vertexBuffer;
+    VkDeviceMemory vertexBufferMemory;
+
+    // Find memory specification and layout of GPU
+    auto findMemoryType(type::uint32 typeFilter, VkMemoryPropertyFlags properties) -> type::uint32;
     auto createVertexBuffer() -> void;
 
 /* Command Buffer Allocation */

@@ -1100,6 +1100,23 @@ auto TriangleApp::createCommandPool() -> void
 /**
  * Vertex Buffer Creation
  */
+auto TriangleApp::findMemoryType(type::uint32 typeFilter, VkMemoryPropertyFlags properties) -> type::uint32
+{
+    VkPhysicalDeviceMemoryProperties memProp;
+    vkGetPhysicalDeviceMemoryProperties(physicalDevice, &memProp);
+
+    // Check for memory type that satifies all requirements and return the index
+    for(type::uint32 i = 0; i < memProp.memoryTypeCount; ++i)
+    {
+        if((typeFilter & (1 << i)) && (memProp.memoryTypes[i].propertyFlags & properties) == properties)
+        {
+            return i;
+        }
+    }
+
+    throw std::runtime_error("Suitable memory type unavailable");
+}
+
 auto TriangleApp::createVertexBuffer() -> void
 {
     VkBufferCreateInfo bufferInfo = {};
@@ -1113,6 +1130,31 @@ auto TriangleApp::createVertexBuffer() -> void
     {
         throw std::runtime_error("Failed to create vertex buffer");
     }
+
+    VkMemoryRequirements memReq;
+    vkGetBufferMemoryRequirements(logicalDevice, vertexBuffer, &memReq);
+
+    VkMemoryAllocateInfo allocInfo = {};
+    allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+    allocInfo.allocationSize = memReq.size;
+    allocInfo.memoryTypeIndex = findMemoryType(memReq.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+
+    if(vkAllocateMemory(logicalDevice, &allocInfo, nullptr, &vertexBufferMemory) != VK_SUCCESS)
+    {
+        throw std::runtime_error("Vertex buffer memory allocation failed");
+    }
+
+    // Last parameter is offset for this buffer in this memory section
+        // This is 0 since this memory section is just for the vertex buffer
+    vkBindBufferMemory(logicalDevice, vertexBuffer, vertexBufferMemory, 0);
+
+    /* Filling Vertex Buffer */
+    void* data;
+    // Access region in memory defined by offset and size
+    vkMapMemory(logicalDevice, vertexBufferMemory, 0, bufferInfo.size, 0, &data);
+    // Copy the vertex data in the memory region
+    memcpy(data, vertices.data(), static_cast<type::size>(bufferInfo.size));
+    vkUnmapMemory(logicalDevice, vertexBufferMemory);
 }
 
 /**
@@ -1176,12 +1218,18 @@ auto TriangleApp::createCommandBuffers() -> void
         /* Begin basic drawing */
         // Bind the pipeline that we want to use
         vkCmdBindPipeline(commandBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline);
+
+        // Bind the vertex buffer(s)
+        VkBuffer vertexBuffers[] = {vertexBuffer};
+        VkDeviceSize offsets[] = {0};
+        vkCmdBindVertexBuffers(commandBuffers[i], 0, 1, vertexBuffers, offsets);
+
         // Draw command
             // Vertex count is # of vertices to draw
             // Instance count is index of instanced object if doing instancing
             // firstVertex is offset in vertex buffer
             // firstInstance is offset for instanced rendering
-        vkCmdDraw(commandBuffers[i], 3, 1, 0, 0);
+        vkCmdDraw(commandBuffers[i], static_cast<type::uint32>(vertices.size()), 1, 0, 0);
         vkCmdEndRenderPass(commandBuffers[i]);
         if(vkEndCommandBuffer(commandBuffers[i]) != VK_SUCCESS)
         {
@@ -1329,6 +1377,7 @@ auto TriangleApp::cleanup() -> void
     cleanupSwapchain();
 
     vkDestroyBuffer(logicalDevice, vertexBuffer, nullptr);
+    vkFreeMemory(logicalDevice, vertexBufferMemory, nullptr);
 
     for(type::size i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i)
     {
