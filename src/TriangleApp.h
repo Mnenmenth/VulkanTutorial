@@ -162,22 +162,29 @@ private:
     VkCommandPool commandPool;
     auto createCommandPool() -> void;
 
-/* Vertex Buffer Creation */
-    static constexpr std::array<Vertex, 3> vertices =
+/* Vertex/Index Buffer Creation */
+    static constexpr std::array<Vertex, 4> vertices =
             {
-                    Vertex{{ 0.0f, -0.5f}, { 1.0f,  0.0f,  0.0f}},
-                    Vertex{{ 0.5f,  0.5f}, { 0.0f,  1.0f,  0.0f}},
-                    Vertex{{-0.5f,  0.5f}, { 0.0f,  0.0f,  1.0f}}
+                    Vertex{{-0.5f, -0.5f}, { 1.0f,  0.0f,  0.0f}},
+                    Vertex{{ 0.5f, -0.5f}, { 0.0f,  1.0f,  0.0f}},
+                    Vertex{{ 0.5f,  0.5f}, { 0.0f,  0.0f,  1.0f}},
+                    Vertex{{-0.5f,  0.5f}, { 1.0f,  1.0f,  1.0f}}
 
             };
+    // uint32 or uint16 can be used here, but uint16 is being used for now because
+        // there are less than 65535 unique vertices
+    static constexpr std::array<type::uint16, 6> indices = {0, 1, 2, 2, 3, 0};
     VkBuffer vertexBuffer;
     VkDeviceMemory vertexBufferMemory;
+    VkBuffer indexBuffer;
+    VkDeviceMemory indexBufferMemory;
 
     // Find memory specification and layout of GPU
     auto findMemoryType(type::uint32 typeFilter, VkMemoryPropertyFlags properties) -> type::uint32;
     auto copyBuffer(VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size) -> void;
     auto createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags props, VkBuffer& buffer, VkDeviceMemory &bufferMemory) -> void;
     auto createVertexBuffer() -> void;
+    auto createIndexBuffer() -> void;
 
 /* Command Buffer Allocation */
     std::vector<VkCommandBuffer> commandBuffers;

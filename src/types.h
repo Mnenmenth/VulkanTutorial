@@ -11,6 +11,8 @@
 
 namespace type
 {
+    using uint16 = std::uint16_t;
+    constexpr uint16 uint16_max = UINT16_MAX;
     using uint32 = std::uint32_t;
     constexpr uint32 uint32_max = UINT32_MAX;
     using uint64 = std::uint64_t;
