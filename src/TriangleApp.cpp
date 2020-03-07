@@ -11,6 +11,13 @@
 #include <fstream>
 #include "TriangleApp.h"
 #include "Vertex.h"
+#include "UBO.h"
+
+#define GLM_FORCE_RADIANS
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+
+#include <chrono>
 
 auto TriangleApp::run() -> void
 {
@@ -58,11 +65,13 @@ auto TriangleApp::initVulkan() -> void
     createSwapChain();
     createImageViews();
     createRenderPass();
+    createDescriptorSetLayout();
     createGraphicsPipeline();
     createFramebuffers();
     createCommandPool();
     createVertexBuffer();
     createIndexBuffer();
+    createUniformBuffers();
     createCommandBuffers();
     createSyncObjects();
 }
@@ -690,6 +699,12 @@ auto TriangleApp::cleanupSwapchain() -> void
     }
 
     vkDestroySwapchainKHR(logicalDevice, swapChain, nullptr);
+
+    for(type::size i = 0; i < swapChainImages.size(); ++i)
+    {
+        vkDestroyBuffer(logicalDevice, uniformBuffers[i], nullptr);
+        vkFreeMemory(logicalDevice, uniformBufferMemories[i], nullptr);
+    }
 }
 
 /** Recreate swap chain */
@@ -715,6 +730,7 @@ auto TriangleApp::recreateSwapChain() -> void
     createRenderPass();
     createGraphicsPipeline();
     createFramebuffers();
+    createUniformBuffers();
     createCommandBuffers();
 }
 
@@ -840,6 +856,31 @@ auto TriangleApp::createShaderModule(const std::vector<char> &code) -> VkShaderM
         throw std::runtime_error("Failed to create shader module");
     }
     return shaderModule;
+}
+
+/* Describe the layout for the uniform buffer */
+auto TriangleApp::createDescriptorSetLayout() -> void
+{
+    // Describe the binding in the shader that we want to link to
+    VkDescriptorSetLayoutBinding uboLayoutBinding = {};
+    uboLayoutBinding.binding = 0;
+    uboLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    uboLayoutBinding.descriptorCount = 1;
+    // Which shader stage this UBO is for
+    uboLayoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+    // For if we're doing image sampling
+    uboLayoutBinding.pImmutableSamplers = nullptr;
+
+    VkDescriptorSetLayoutCreateInfo layoutInfo = {};
+    layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+    layoutInfo.bindingCount = 1;
+    layoutInfo.pBindings = &uboLayoutBinding;
+
+    if(vkCreateDescriptorSetLayout(logicalDevice, &layoutInfo, nullptr, &descriptorSetLayout) != VK_SUCCESS)
+    {
+        throw std::runtime_error("Descriptor layout set creation failed");
+    }
+
 }
 
 auto TriangleApp::createGraphicsPipeline() -> void
@@ -1003,8 +1044,8 @@ auto TriangleApp::createGraphicsPipeline() -> void
         // so they can be used
     VkPipelineLayoutCreateInfo pipelineLayoutInfo = {};
     pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-    pipelineLayoutInfo.setLayoutCount = 0;
-    pipelineLayoutInfo.pSetLayouts = nullptr;
+    pipelineLayoutInfo.setLayoutCount = 1;
+    pipelineLayoutInfo.pSetLayouts = &descriptorSetLayout;
     pipelineLayoutInfo.pushConstantRangeCount = 0;
     pipelineLayoutInfo.pPushConstantRanges = nullptr;
 
@@ -1254,6 +1295,21 @@ auto TriangleApp::createIndexBuffer() -> void
     vkFreeMemory(logicalDevice, stagingBufferMemory, nullptr);
 }
 
+auto TriangleApp::createUniformBuffers() -> void
+{
+    VkDeviceSize bufferSize = sizeof(UBO::MVP);
+
+    uniformBuffers.resize(swapChainImages.size());
+    uniformBufferMemories.resize(swapChainImages.size());
+
+    for(type::size i = 0; i < swapChainImages.size(); ++i)
+    {
+        createBuffer(bufferSize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+                VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                uniformBuffers[i], uniformBufferMemories[i]);
+    }
+}
+
 /**
  * Command Buffer Allocation
  */
@@ -1370,6 +1426,28 @@ auto TriangleApp::createSyncObjects() -> void
  *
  */
 
+auto TriangleApp::updateUniformBuffer(type::uint32 currImg) -> void
+{
+    // Timer for consistent geometry rotation
+    static auto startTime = std::chrono::high_resolution_clock::now();
+    auto currTime = std::chrono::high_resolution_clock::now();
+    float time = std::chrono::duration<float, std::chrono::seconds::period>(currTime-startTime).count();
+
+    UBO::MVP mvp = {};
+    mvp.model = glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+    mvp.view = glm::perspective(glm::radians(45.0f), swapChainExtent.width / static_cast<float>(swapChainExtent.height), 0.1f, 10.0f);
+    // GLM was designed in OpenGL in mind and OpenGL inverts the Y axis
+        // Vulkan however does not, so undo the inversion
+    mvp.proj[1][1] *= -1;
+
+    // This is not the most efficient way to use a UBO
+        // Look into passing a small buffer of push constants
+    void* data;
+    vkMapMemory(logicalDevice, uniformBufferMemories[currImg], 0, sizeof(mvp), 0, &data);
+    memcpy(logicalDevice, &mvp, sizeof(mvp));
+    vkUnmapMemory(logicalDevice, uniformBufferMemories[currImg]);
+}
+
 auto TriangleApp::drawFrame() -> void
 {
     // Sync queues before continuing
@@ -1398,6 +1476,8 @@ auto TriangleApp::drawFrame() -> void
     }
     // Mark image as in use
     imagesInFlight[imageIndex] = inFlightFences[currentFrame];
+
+    updateUniformBuffer(imageIndex);
 
     VkSubmitInfo submitInfo = {};
     submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
@@ -1469,6 +1549,8 @@ auto TriangleApp::mainLoop() -> void
 auto TriangleApp::cleanup() -> void
 {
     cleanupSwapchain();
+
+    vkDestroyDescriptorSetLayout(logicalDevice, descriptorSetLayout, nullptr);
 
     vkDestroyBuffer(logicalDevice, indexBuffer, nullptr);
     vkFreeMemory(logicalDevice, indexBufferMemory, nullptr);

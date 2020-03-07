@@ -148,9 +148,11 @@ private:
 
 /* Graphics Pipeline Creation */
     VkPipeline graphicsPipeline;
+    VkDescriptorSetLayout descriptorSetLayout;
     VkPipelineLayout pipelineLayout;
     static auto readFile(const std::string& fileName, std::vector<char>& buffer) -> std::vector<char>;
     auto createShaderModule(const std::vector<char>& code) -> VkShaderModule;
+    auto createDescriptorSetLayout() -> void;
     auto createGraphicsPipeline() -> void;
 
 /* Swap Chain Framebuffers Creation */
@@ -162,7 +164,7 @@ private:
     VkCommandPool commandPool;
     auto createCommandPool() -> void;
 
-/* Vertex/Index Buffer Creation */
+/* Buffer Creation */
     static constexpr std::array<Vertex, 4> vertices =
             {
                     Vertex{{-0.5f, -0.5f}, { 1.0f,  0.0f,  0.0f}},
@@ -179,12 +181,17 @@ private:
     VkBuffer indexBuffer;
     VkDeviceMemory indexBufferMemory;
 
+    std::vector<VkBuffer> uniformBuffers;
+    std::vector<VkDeviceMemory> uniformBufferMemories;
+
     // Find memory specification and layout of GPU
     auto findMemoryType(type::uint32 typeFilter, VkMemoryPropertyFlags properties) -> type::uint32;
     auto copyBuffer(VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size) -> void;
     auto createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags props, VkBuffer& buffer, VkDeviceMemory &bufferMemory) -> void;
     auto createVertexBuffer() -> void;
     auto createIndexBuffer() -> void;
+    auto createUniformBuffers() -> void;
+
 
 /* Command Buffer Allocation */
     std::vector<VkCommandBuffer> commandBuffers;
@@ -206,6 +213,7 @@ private:
     // Get image from swap chain,
     // Execute image as attachment for framebuffer
     // Return image to swap chain for presentation
+    auto updateUniformBuffer(type::uint32 currImg) -> void;
     auto drawFrame() -> void;
     auto mainLoop() -> void;
     auto cleanup() -> void;
