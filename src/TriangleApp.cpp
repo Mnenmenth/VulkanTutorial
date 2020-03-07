@@ -1117,44 +1117,117 @@ auto TriangleApp::findMemoryType(type::uint32 typeFilter, VkMemoryPropertyFlags 
     throw std::runtime_error("Suitable memory type unavailable");
 }
 
-auto TriangleApp::createVertexBuffer() -> void
+auto TriangleApp::copyBuffer(VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size) -> void
+{
+    // In the future, would be a good idea to create a command pool for short-term
+        // buffers such as this
+    VkCommandBufferAllocateInfo allocateInfo = {};
+    allocateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+    allocateInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    allocateInfo.commandPool = commandPool;
+    allocateInfo.commandBufferCount = 1;
+
+    VkCommandBuffer commandBuffer;
+    vkAllocateCommandBuffers(logicalDevice, &allocateInfo, &commandBuffer);
+
+    // Record the command buffer
+    VkCommandBufferBeginInfo beginInfo = {};
+    beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    // Tell the driver that this command buffer will only be used once
+    beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+    vkBeginCommandBuffer(commandBuffer, &beginInfo);
+
+    VkBufferCopy copyRegion = {};
+    copyRegion.srcOffset = 0;
+    copyRegion.dstOffset = 0;
+    copyRegion.size = size;
+    vkCmdCopyBuffer(commandBuffer, srcBuffer, dstBuffer, 1, &copyRegion);
+
+    vkEndCommandBuffer(commandBuffer);
+
+    // Submit the command buffer for execution
+    VkSubmitInfo submitInfo = {};
+    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    submitInfo.commandBufferCount = 1;
+    submitInfo.pCommandBuffers = &commandBuffer;
+
+    vkQueueSubmit(graphicsQueue, 1, &submitInfo, VK_NULL_HANDLE);
+    // Using a fence here would allow for asynchronous transfers
+    vkQueueWaitIdle(graphicsQueue);
+
+    vkFreeCommandBuffers(logicalDevice, commandPool, 1, &commandBuffer);
+}
+
+auto TriangleApp::createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags props,
+                               VkBuffer &buffer, VkDeviceMemory &bufferMemory) -> void
 {
     VkBufferCreateInfo bufferInfo = {};
     bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-    bufferInfo.size = sizeof(vertices[0]) * vertices.size();
-    bufferInfo.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+    bufferInfo.size = size;
+    bufferInfo.usage = usage;
     // Only one queue can own this buffer at a time
     bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
-    if(vkCreateBuffer(logicalDevice, &bufferInfo, nullptr, &vertexBuffer) != VK_SUCCESS)
+    if(vkCreateBuffer(logicalDevice, &bufferInfo, nullptr, &buffer) != VK_SUCCESS)
     {
-        throw std::runtime_error("Failed to create vertex buffer");
+        throw std::runtime_error("Failed to create buffer");
     }
 
     VkMemoryRequirements memReq;
-    vkGetBufferMemoryRequirements(logicalDevice, vertexBuffer, &memReq);
+    vkGetBufferMemoryRequirements(logicalDevice, buffer, &memReq);
 
     VkMemoryAllocateInfo allocInfo = {};
     allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
     allocInfo.allocationSize = memReq.size;
-    allocInfo.memoryTypeIndex = findMemoryType(memReq.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+    allocInfo.memoryTypeIndex = findMemoryType(memReq.memoryTypeBits, props);
 
-    if(vkAllocateMemory(logicalDevice, &allocInfo, nullptr, &vertexBufferMemory) != VK_SUCCESS)
+    // In real applications, vkAllocateMemory should not be called everytime a new buffer is created
+        // as there is a maximum number of allocations allowed.
+        // Allocating a large block and then using offsets for the buffers should be used instead
+    if(vkAllocateMemory(logicalDevice, &allocInfo, nullptr, &bufferMemory) != VK_SUCCESS)
     {
-        throw std::runtime_error("Vertex buffer memory allocation failed");
+        throw std::runtime_error("Buffer bufferMemory allocation failed");
     }
 
-    // Last parameter is offset for this buffer in this memory section
-        // This is 0 since this memory section is just for the vertex buffer
-    vkBindBufferMemory(logicalDevice, vertexBuffer, vertexBufferMemory, 0);
+    // Last parameter is offset for this buffer in this bufferMemory section
+    vkBindBufferMemory(logicalDevice, buffer, bufferMemory, 0);
+}
 
-    /* Filling Vertex Buffer */
+auto TriangleApp::createVertexBuffer() -> void
+{
+    //! Why a staging buffer is created to transfer data into the vertex buffer
+        // This allows the vertex buffer to only be accessible by the GPU as the
+        // staging buffer is the one that requires the flags to be accessible
+        // by the CPU. This allows the driver to make memory optimizations
+
+    // Size of data to be contained in buffer
+    VkDeviceSize bufferSize = sizeof(vertices[0])*vertices.size();
+
+    /* Create Staging (Transfer) Buffer */
+    VkBuffer stagingBuffer;
+    VkDeviceMemory stagingBufferMemory;
+    // Setup staging buffer as the source of copied data
+    createBuffer(bufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, stagingBuffer, stagingBufferMemory);
+
+    /* Filling Staging Buffer */
     void* data;
     // Access region in memory defined by offset and size
-    vkMapMemory(logicalDevice, vertexBufferMemory, 0, bufferInfo.size, 0, &data);
+    vkMapMemory(logicalDevice, stagingBufferMemory, 0, bufferSize, 0, &data);
     // Copy the vertex data in the memory region
-    memcpy(data, vertices.data(), static_cast<type::size>(bufferInfo.size));
-    vkUnmapMemory(logicalDevice, vertexBufferMemory);
+    memcpy(data, vertices.data(), static_cast<type::size>(bufferSize));
+    vkUnmapMemory(logicalDevice, stagingBufferMemory);
+
+    /* Create Vertex Buffer */
+    // Setup vertex buffer as destinaton of copied data
+    createBuffer(bufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+            vertexBuffer, vertexBufferMemory);
+
+    // Copy the data from the staging buffer into the vertex buffer
+    copyBuffer(stagingBuffer, vertexBuffer, bufferSize);
+
+    vkDestroyBuffer(logicalDevice, stagingBuffer, nullptr);
+    vkFreeMemory(logicalDevice, stagingBufferMemory, nullptr);
 }
 
 /**

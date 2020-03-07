@@ -175,6 +175,8 @@ private:
 
     // Find memory specification and layout of GPU
     auto findMemoryType(type::uint32 typeFilter, VkMemoryPropertyFlags properties) -> type::uint32;
+    auto copyBuffer(VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size) -> void;
+    auto createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags props, VkBuffer& buffer, VkDeviceMemory &bufferMemory) -> void;
     auto createVertexBuffer() -> void;
 
 /* Command Buffer Allocation */
