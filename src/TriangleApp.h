@@ -184,6 +184,9 @@ private:
     std::vector<VkBuffer> uniformBuffers;
     std::vector<VkDeviceMemory> uniformBufferMemories;
 
+    VkDescriptorPool descriptorPool;
+    std::vector<VkDescriptorSet> descriptorSets;
+
     // Find memory specification and layout of GPU
     auto findMemoryType(type::uint32 typeFilter, VkMemoryPropertyFlags properties) -> type::uint32;
     auto copyBuffer(VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size) -> void;
@@ -191,7 +194,9 @@ private:
     auto createVertexBuffer() -> void;
     auto createIndexBuffer() -> void;
     auto createUniformBuffers() -> void;
-
+    // Allocate pool of descriptors from which to bind uniform buffers
+    auto createDescriptorPool() -> void;
+    auto createDescriptorSets() -> void;
 
 /* Command Buffer Allocation */
     std::vector<VkCommandBuffer> commandBuffers;

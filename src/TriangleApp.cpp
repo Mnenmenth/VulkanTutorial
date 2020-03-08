@@ -72,6 +72,8 @@ auto TriangleApp::initVulkan() -> void
     createVertexBuffer();
     createIndexBuffer();
     createUniformBuffers();
+    createDescriptorPool();
+    createDescriptorSets();
     createCommandBuffers();
     createSyncObjects();
 }
@@ -705,6 +707,7 @@ auto TriangleApp::cleanupSwapchain() -> void
         vkDestroyBuffer(logicalDevice, uniformBuffers[i], nullptr);
         vkFreeMemory(logicalDevice, uniformBufferMemories[i], nullptr);
     }
+    vkDestroyDescriptorPool(logicalDevice, descriptorPool, nullptr);
 }
 
 /** Recreate swap chain */
@@ -731,13 +734,14 @@ auto TriangleApp::recreateSwapChain() -> void
     createGraphicsPipeline();
     createFramebuffers();
     createUniformBuffers();
+    createDescriptorPool();
+    createDescriptorSets();
     createCommandBuffers();
 }
 
 /**
  * Render Pass Setup
  */
-#include <glm/glm.hpp>
 auto TriangleApp::createRenderPass() -> void
 {
     VkAttachmentDescription colorAttachment = {};
@@ -980,7 +984,7 @@ auto TriangleApp::createGraphicsPipeline() -> void
     // Face culling
     rasterizer.cullMode = VK_CULL_MODE_BACK_BIT;
     // Vertex order
-    rasterizer.frontFace = VK_FRONT_FACE_CLOCKWISE;
+    rasterizer.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
     // Bias depth values based on constant or fragment's slope
         // Sometimes used for shadow mapping
     rasterizer.depthBiasEnable = VK_FALSE;
@@ -1310,6 +1314,77 @@ auto TriangleApp::createUniformBuffers() -> void
     }
 }
 
+auto TriangleApp::createDescriptorPool() -> void
+{
+    // Which descriptor types are being used and how many
+    VkDescriptorPoolSize poolSize = {};
+    poolSize.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    poolSize.descriptorCount = static_cast<type::uint32>(swapChainImages.size());
+
+    VkDescriptorPoolCreateInfo poolInfo = {};
+    poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+    poolInfo.poolSizeCount = 1;
+    poolInfo.pPoolSizes = &poolSize;
+    // Maximum amount of descriptor sets that can be allocated
+    poolInfo.maxSets = static_cast<type::uint32>(swapChainImages.size());
+
+    if(vkCreateDescriptorPool(logicalDevice, &poolInfo, nullptr, &descriptorPool) != VK_SUCCESS)
+    {
+        throw std::runtime_error("Descriptor pool creation failed");
+    }
+}
+
+auto TriangleApp::createDescriptorSets() -> void
+{
+    std::vector<VkDescriptorSetLayout> layouts(swapChainImages.size(), descriptorSetLayout);
+    VkDescriptorSetAllocateInfo allocInfo = {};
+    allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+    // Descriptor pool to allocate from
+    allocInfo.descriptorPool = descriptorPool;
+    allocInfo.descriptorSetCount = static_cast<type::uint32>(swapChainImages.size());
+    allocInfo.pSetLayouts = layouts.data();
+
+    // Allocate a descriptor set for each swap chain image
+    descriptorSets.resize(swapChainImages.size());
+    if(vkAllocateDescriptorSets(logicalDevice, &allocInfo, descriptorSets.data()) != VK_SUCCESS)
+    {
+        throw std::runtime_error("Descriptor set allocation failed");
+    }
+
+    // Configure each descriptor
+    for(type::size i = 0; i < swapChainImages.size(); ++i)
+    {
+        VkDescriptorBufferInfo bufferInfo = {};
+        bufferInfo.buffer = uniformBuffers[i];
+        bufferInfo.offset = 0;
+        //bufferInfo.range = sizeof(UBO::MVP);
+        // VK_WHOLE_SIZE can be used instead since we're overwriting
+            // the whole buffer
+        bufferInfo.range = VK_WHOLE_SIZE;
+
+        VkWriteDescriptorSet descriptorWrite = {};
+        descriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        descriptorWrite.dstSet = descriptorSets[i];
+        // Binding index of the UBO in shader
+        descriptorWrite.dstBinding = 0;
+        // First index in array of descriptors being updated,
+            // but we're only updating one so this is 0
+        descriptorWrite.dstArrayElement = 0;
+        descriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        descriptorWrite.descriptorCount = 1;
+        // Array (or single pointer) of descriptorCount structs
+            // that configure the descriptors
+        descriptorWrite.pBufferInfo = &bufferInfo;
+        // Same but for descriptors for image data
+        descriptorWrite.pImageInfo = nullptr;
+        // Same but for descriptors for buffer views
+        descriptorWrite.pTexelBufferView = nullptr;
+
+        // Apply updates
+        vkUpdateDescriptorSets(logicalDevice, 1, &descriptorWrite, 0, nullptr);
+    }
+}
+
 /**
  * Command Buffer Allocation
  */
@@ -1378,6 +1453,10 @@ auto TriangleApp::createCommandBuffers() -> void
         vkCmdBindVertexBuffers(commandBuffers[i], 0, 1, vertexBuffers, offsets);
         vkCmdBindIndexBuffer(commandBuffers[i], indexBuffer, 0, VK_INDEX_TYPE_UINT16);
 
+        // Bind the correct descriptor set for each swap chain image to the
+            // descriptors in the shader
+        vkCmdBindDescriptorSets(commandBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS,
+                pipelineLayout, 0, 1, &descriptorSets[i], 0, nullptr);
         // Draw command
         vkCmdDrawIndexed(commandBuffers[i], static_cast<type::uint32>(indices.size()), 1, 0, 0, 0);
         vkCmdEndRenderPass(commandBuffers[i]);
@@ -1435,7 +1514,8 @@ auto TriangleApp::updateUniformBuffer(type::uint32 currImg) -> void
 
     UBO::MVP mvp = {};
     mvp.model = glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-    mvp.view = glm::perspective(glm::radians(45.0f), swapChainExtent.width / static_cast<float>(swapChainExtent.height), 0.1f, 10.0f);
+    mvp.view = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+    mvp.proj = glm::perspective(glm::radians(45.0f), swapChainExtent.width / static_cast<float>(swapChainExtent.height), 0.1f, 10.0f);
     // GLM was designed in OpenGL in mind and OpenGL inverts the Y axis
         // Vulkan however does not, so undo the inversion
     mvp.proj[1][1] *= -1;
@@ -1444,7 +1524,7 @@ auto TriangleApp::updateUniformBuffer(type::uint32 currImg) -> void
         // Look into passing a small buffer of push constants
     void* data;
     vkMapMemory(logicalDevice, uniformBufferMemories[currImg], 0, sizeof(mvp), 0, &data);
-    memcpy(logicalDevice, &mvp, sizeof(mvp));
+    memcpy(data, &mvp, sizeof(mvp));
     vkUnmapMemory(logicalDevice, uniformBufferMemories[currImg]);
 }
 
@@ -1457,7 +1537,8 @@ auto TriangleApp::drawFrame() -> void
     // Get image from swap chain
     type::uint32 imageIndex;
     // uint64 max value for timeout disables timeout. Fence is null since we're using semaphores, not fences
-    VkResult result = vkAcquireNextImageKHR(logicalDevice, swapChain, type::uint64_max, imageAvailableSemaphores[currentFrame], VK_NULL_HANDLE, &imageIndex);
+    VkResult result = vkAcquireNextImageKHR(logicalDevice, swapChain, type::uint64_max,
+            imageAvailableSemaphores[currentFrame], VK_NULL_HANDLE, &imageIndex);
     // Create new swap chain if needed
     if(result == VK_ERROR_OUT_OF_DATE_KHR)
     {
